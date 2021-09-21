@@ -21,7 +21,7 @@ import Foundation
  file name can be surrounding by additional white space,
  all of which is stripped.
  
- The filename is UTF-8 encoded.
+ The file name and marker sequences are UTF-8 encoded.
  
  If the txtar file is missing a trailing newline on the final line,
  parsers should consider a final newline to be present anyway.
@@ -31,21 +31,15 @@ import Foundation
  (This description was copied from the Go x/tools repository.)
 */
 
-let newlineByte: UInt8 = 0x0a
-let markerStart = "-- ".data(using: .utf8)!
-let markerEnd = " --".data(using: .utf8)!
-let newline = "\n".data(using: .utf8)!
-
-/// A single file in an Archive.
-public struct File {
-	var name: String
-	var data: Data
-}
-
 /// A collection of files.
 public struct Archive {
-    let files: [File]
-    let comment: Data? = nil
+    let files: AnySequence<File>
+    let comment: Data?
+	
+	init(files: AnySequence<File>, comment: Data? = nil) {
+		self.files = files
+		self.comment = comment
+	}
     
 //    public static func parse(data: Data) -> Archive {
 //    }
@@ -56,71 +50,90 @@ public struct Archive {
 	/// and all file names are non-empty.
     public func format() -> Data {
         var out = Data()
-		
 		out.append(formatComment(comment))
-        
 		for file in files {
 			out.append(formatFile(file))
         }
-		
 		return out
     }
-	
-	func formatFile(_ file: File) -> Data {
-		var d = Data()
-		d.append(markerStart)
-		d.append(file.name.data(using: .utf8)!)
-		d.append(markerEnd + newline)
-		d.append(withFixedNewline(file.data))
-		return d
-	}
-	
-	func formatComment(_ comment: Data?) -> Data {
-		var d = Data()
-		if let c = comment {
-			d.append(withFixedNewline(c))
-		}
-		return d
-	}
 }
 
-/// If the given data is empty or ends in \n, returns the data as is.
-/// Otherwise returns a copy of data with \n appended.
-internal func withFixedNewline(_ d: Data) -> Data {
-	if d.isEmpty || d.last! == newlineByte {
-	    return d
+/// A single file in an Archive.
+public struct File {
+	var name: String
+	var data: Data
+}
+
+internal func formatFile(_ file: File) -> Data {
+	var out = Data()
+	out.append(markerStart)
+	out.append(file.name.data(using: .utf8)!)
+	out.append(markerEnd)
+	out.append(newline)
+	appendWithNewline(file.data, to: &out)
+	return out
+}
+
+internal func formatComment(_ comment: Data?) -> Data {
+	var out = Data()
+	if let c = comment {
+		appendWithNewline(c, to: &out)
+	}
+	return out
+}
+
+let newlineByte: UInt8 = 0x0a
+let markerStart = "-- ".data(using: .utf8)!
+let markerEnd = " --".data(using: .utf8)!
+let newline = "\n".data(using: .utf8)!
+
+// If the given data is empty or ends in \n, appends the data as is.
+// Otherwise appends the data and a newline after.
+internal func appendWithNewline(_ data: Data, to: inout Data) {
+	if data.isEmpty || data.last! == newlineByte {
+		to.append(data)
+		return
     }
-    var newData = Data(d)
-    newData.append("\n".data(using: .utf8)!)
-    return newData
+	to.append(data)
+	to.append(newline)
 }
 
-internal func findNextFileMarker(data: Slice<Data>) -> (before: Slice<Data>, name: String, after: Slice<Data>)? {
-	var idx = 0
+// Finds the next file marker line, if any, and returns the file name from the line,
+// along with the data before and after the found file marker line. If no file marker
+// line is found, returns nil (which indicates that there were no file marker lines
+// in the given data).
+internal func findNextFileMarker(_ data: Slice<Data>) -> (before: Slice<Data>, name: String, after: Slice<Data>)? {
+	var idx = data.startIndex
 	while true {
-		if let markerLine = startsWithMarkerLine(data[idx...]) {
-			return (before: data[...idx], name: markerLine.name, after: markerLine.after)
+		if let markerLine = isMarkerLine(data[idx...]) {
+			return (before: data[..<idx], name: markerLine.name, after: markerLine.after)
 		}
 		if let newlineIdx = data[idx...].firstIndex(of: newlineByte) {
-			// try again
+			// try at next line
 			idx = newlineIdx + 1
 			continue
 		}
-		return nil // reached end
+		return nil
 	}
 }
 
 // Checks whether data begins with a file marker line. If so,
 // returns the filename and remaining data after the file marker line.
 // Otherwise, returns nil.
-internal func startsWithMarkerLine(_ data: Slice<Data>) -> (name: String, after: Slice<Data>)? {
+internal func isMarkerLine(_ data: Slice<Data>) -> (name: String, after: Slice<Data>)? {
 	guard data.starts(with: markerStart) else {
 		return nil
 	}
-	guard let lineEndIdx = data.firstIndex(of: newlineByte) else {
-		return nil
+
+	let line: Slice<Data>
+	let remaining: Slice<Data>
+	if let lineEndIdx = data.firstIndex(of: newlineByte) {
+		line = data[..<lineEndIdx]
+		remaining = data[lineEndIdx+1..<data.endIndex]
+	} else {
+		line = data
+		remaining = data[data.endIndex...]
 	}
-	let line = data.prefix(upTo: lineEndIdx)
 	
 	guard endsWithMarkerEnd(line) else {
 		return nil
@@ -133,23 +146,24 @@ internal func startsWithMarkerLine(_ data: Slice<Data>) -> (name: String, after:
 	}
 	
 	// Extract the filename.
-	let name = line[markerStart.count..<line.endIndex-markerEnd.count]
-	// TODO: is it possible to construct String from Slice<Data>?
+	let name = line[line.startIndex+markerStart.count..<line.endIndex-markerEnd.count]
+	// TODO(nishanth): possible to construct String from Slice<Data>?
 	guard let name = String(data: Data(name), encoding: .utf8)?
 			.trimmingCharacters(in: CharacterSet.whitespaces) else {
 		return nil
 	}
 	
-	return (name, data[lineEndIdx+1..<data.endIndex])
+	return (name, remaining)
 }
 
-// Does the line end with the end marker?
-internal func endsWithMarkerEnd(_ line: Slice<Data>) -> Bool {
-	guard line.count >= markerEnd.count else {
+// Does the data end with the end marker?
+internal func endsWithMarkerEnd(_ data: Slice<Data>) -> Bool {
+	guard data.endIndex - markerEnd.count >= data.startIndex else {
 		return false
 	}
 	// Example:
-	// -- name --
-	// 0123456789; endIndex=10; markerEnd.count=3; 10-3=7; 7..<10
-	return line[line.endIndex-markerEnd.count..<line.endIndex].elementsEqual(markerEnd)
+	// -- n --
+	// 2345678; endIndex=9; markerEnd.count=3; 9-3=5; 6..<9
+	let suffixRange = data.endIndex-markerEnd.count..<data.endIndex
+	return data[suffixRange].elementsEqual(markerEnd)
 }
