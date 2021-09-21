@@ -34,10 +34,10 @@ import Foundation
 /// A collection of files.
 public struct Archive: Equatable {
 	let comment: Data
-    let files: [File]
+	let files: [File]
 
 	/// Parse the serialized form of an archive.
-    public static func parse(_ data: Data) -> Archive {
+	public static func parse(_ data: Data) -> Archive {
 		var remainingData: Slice<Data> = data[data.startIndex..<data.endIndex]
 
 		guard let next = findNextFileMarker(remainingData) else {
@@ -62,20 +62,20 @@ public struct Archive: Equatable {
 		}
 
 		return Archive(comment: comment, files: files)
-    }
-	
-    /// Returns the txtar representation of this archive.
+	}
+
+	/// Returns the txtar representation of this archive.
 	/// It is assumed that this archive's files and comment are well-formed.
 	/// Particularly, the comment and the file data contain no file marker lines,
 	/// and all file names are non-empty.
-    public func format() -> Data {
-        var out = Data()
+	public func format() -> Data {
+		var out = Data()
 		out.append(formatComment(comment))
 		for file in files {
 			out.append(formatFile(file))
-        }
+		}
 		return out
-    }
+	}
 }
 
 /// A single file in an Archive.
@@ -113,7 +113,7 @@ internal func appendWithNewline(_ data: Data, to: inout Data) {
 	if data.isEmpty || data.last! == newlineByte {
 		to.append(data)
 		return
-    }
+	}
 	to.append(data)
 	to.append(newline)
 }

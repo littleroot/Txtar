@@ -87,27 +87,27 @@ some content
 }
 
 final class AppendWithNewlineTests: XCTestCase {
-    func testAppendWithNewline() {
-        struct TestCase {
-            let input, want: String
-        }
-        
-        let testcases = [
-            TestCase(input: "", want: ""),
-            TestCase(input: "\n", want: "\n"),
-            TestCase(input: "\r\n", want: "\r\n"),
-            TestCase(input: "hello", want: "hello\n"),
-            TestCase(input: "hello\n", want: "hello\n"),
-        ]
-        
-        for tc in testcases {
+	func testAppendWithNewline() {
+		struct TestCase {
+			let input, want: String
+		}
+
+		let testcases = [
+			TestCase(input: "", want: ""),
+			TestCase(input: "\n", want: "\n"),
+			TestCase(input: "\r\n", want: "\r\n"),
+			TestCase(input: "hello", want: "hello\n"),
+			TestCase(input: "hello\n", want: "hello\n"),
+		]
+
+		for tc in testcases {
 			var buf = Data()
-            let input = tc.input.data(using: .utf8)!
+			let input = tc.input.data(using: .utf8)!
 			appendWithNewline(input, to: &buf)
-            let want = tc.want.data(using: .utf8)
+			let want = tc.want.data(using: .utf8)
 			XCTAssertEqual(buf, want, String(format: "input \(tc.input)"))
-        }
-    }
+		}
+	}
 }
 
 final class IsMarkerLineTests: XCTestCase {
