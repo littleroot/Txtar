@@ -1,6 +1,91 @@
 import XCTest
 @testable import Txtar
 
+final class ArchiveTests: XCTestCase {
+	func testFormat() {
+		struct TestCase {
+			let desc: String
+			let input: Archive
+			let want: String
+		}
+
+		let testcases = [
+			TestCase(desc: "basic",
+					 input: Archive(comment: "comment1\ncomment2\n".data(using: .utf8)!,
+									files: [
+										File(name: "file1", data: "File 1 text.\n-- foo ---\nMore file 1 text.\n".data(using: .utf8)!),
+										File(name: "file 2", data: "File 2 text.\n".data(using: .utf8)!),
+										File(name: "empty", data: "".data(using: .utf8)!),
+										File(name: "empty filename line", data: "some content\n-- --\n".data(using: .utf8)!),
+										File(name: "noNL", data: "hello world".data(using: .utf8)!),
+									]),
+					 want: """
+comment1
+comment2
+-- file1 --
+File 1 text.
+-- foo ---
+More file 1 text.
+-- file 2 --
+File 2 text.
+-- empty --
+-- empty filename line --
+some content
+-- --
+-- noNL --
+hello world
+
+""")
+		]
+
+		for tc in testcases {
+			let got = String(data: tc.input.format(), encoding: .utf8)
+			XCTAssertEqual(got, tc.want, tc.desc)
+		}
+	}
+
+	func TestParse() {
+		struct TestCase {
+			let desc: String
+			let input: Data
+			let want: Archive
+		}
+
+		let testcases = [
+			TestCase(desc: "basic",
+					 input: """
+comment1
+comment2
+-- file1 --
+File 1 text.
+-- foo ---
+More file 1 text.
+-- file 2 --
+File 2 text.
+-- empty --
+-- noNL --
+hello world
+-- empty filename line --
+some content
+-- --
+""".data(using: .utf8)!,
+					 want: Archive(comment: "".data(using: .utf8)!,
+								   files: [
+									File(name: "file1", data: "File 1 text.\n-- foo ---\nMore file 1 text.\n".data(using: .utf8)!),
+									File(name: "file 2", data: "File 2 text.\n".data(using: .utf8)!),
+									File(name: "empty", data: "".data(using: .utf8)!),
+									File(name: "noNL", data: "hello world".data(using: .utf8)!),
+									File(name: "empty filename line", data: "some content\n-- --\n".data(using: .utf8)!),
+								   ])),
+		]
+
+		for tc in testcases {
+			let got = Archive.parse(tc.input)
+			XCTAssertEqual(got, tc.want, tc.desc)
+		}
+	}
+}
+
 final class AppendWithNewlineTests: XCTestCase {
     func testAppendWithNewline() {
         struct TestCase {

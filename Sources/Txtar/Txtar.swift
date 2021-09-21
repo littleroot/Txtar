@@ -32,9 +32,9 @@ import Foundation
 */
 
 /// A collection of files.
-public struct Archive {
+public struct Archive: Equatable {
+	let comment: Data
     let files: [File]
-    let comment: Data
 
 	/// Parse the serialized form of an archive.
     public static func parse(_ data: Data) -> Archive {
@@ -42,13 +42,14 @@ public struct Archive {
 
 		guard let next = findNextFileMarker(remainingData) else {
 			// only comment is present.
-			return Archive(files: [], comment: withNewline(data))
+			return Archive(comment: withNewline(data), files: [])
 		}
 
-		let comment = withNewline(Data(next.before))
+		let comment = Data(next.before)
+		var files = [File]()
+
 		var name = next.name
 		remainingData = next.after
-		var files = [File]()
 
 		while true {
 			guard let next = findNextFileMarker(remainingData) else {
@@ -60,7 +61,7 @@ public struct Archive {
 			remainingData = next.after
 		}
 
-		return Archive(files: files, comment: comment)
+		return Archive(comment: comment, files: files)
     }
 	
     /// Returns the txtar representation of this archive.
@@ -78,7 +79,7 @@ public struct Archive {
 }
 
 /// A single file in an Archive.
-public struct File {
+public struct File: Equatable {
 	var name: String
 	var data: Data
 }
