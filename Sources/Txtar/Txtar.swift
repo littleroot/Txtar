@@ -33,16 +33,35 @@ import Foundation
 
 /// A collection of files.
 public struct Archive {
-    let files: AnySequence<File>
-    let comment: Data?
-	
-	init(files: AnySequence<File>, comment: Data? = nil) {
-		self.files = files
-		self.comment = comment
-	}
-    
-//    public static func parse(data: Data) -> Archive {
-//    }
+    let files: [File]
+    let comment: Data
+
+	/// Parse the serialized form of an archive.
+    public static func parse(_ data: Data) -> Archive {
+		var remainingData: Slice<Data> = data[data.startIndex..<data.endIndex]
+
+		guard let next = findNextFileMarker(remainingData) else {
+			// only comment is present.
+			return Archive(files: [], comment: withNewline(data))
+		}
+
+		let comment = withNewline(Data(next.before))
+		var name = next.name
+		remainingData = next.after
+		var files = [File]()
+
+		while true {
+			guard let next = findNextFileMarker(remainingData) else {
+				files.append(File(name: name, data: withNewline(Data(remainingData))))
+				break
+			}
+			files.append(File(name: name, data: Data(next.before)))
+			name = next.name
+			remainingData = next.after
+		}
+
+		return Archive(files: files, comment: comment)
+    }
 	
     /// Returns the txtar representation of this archive.
 	/// It is assumed that this archive's files and comment are well-formed.
@@ -87,8 +106,8 @@ let markerStart = "-- ".data(using: .utf8)!
 let markerEnd = " --".data(using: .utf8)!
 let newline = "\n".data(using: .utf8)!
 
-// If the given data is empty or ends in \n, appends the data as is.
-// Otherwise appends the data and a newline after.
+// Like withNewline but accepts a buffer to modify instead of returning
+// a new buffer.
 internal func appendWithNewline(_ data: Data, to: inout Data) {
 	if data.isEmpty || data.last! == newlineByte {
 		to.append(data)
@@ -98,10 +117,17 @@ internal func appendWithNewline(_ data: Data, to: inout Data) {
 	to.append(newline)
 }
 
-// Finds the next file marker line, if any, and returns the file name from the line,
-// along with the data before and after the found file marker line. If no file marker
-// line is found, returns nil (which indicates that there were no file marker lines
-// in the given data).
+// If the given data is empty or ends in \n, returns a copy of data as is.
+// Otherwise returns a copy of data with a newline appended after.
+internal func withNewline(_ data: Data) -> Data {
+	if data.isEmpty || data.last! == newlineByte {
+		return Data(data)
+	}
+	var out = Data(data)
+	out.append(newline)
+	return out
+}
+
 internal func findNextFileMarker(_ data: Slice<Data>) -> (before: Slice<Data>, name: String, after: Slice<Data>)? {
 	var idx = data.startIndex
 	while true {
