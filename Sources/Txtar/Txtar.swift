@@ -190,7 +190,7 @@ internal func endsWithMarkerEnd(_ data: Slice<Data>) -> Bool {
 	}
 	// Example:
 	// -- n --
-	// 2345678; endIndex=9; markerEnd.count=3; 9-3=5; 6..<9
+	// 2345678; endIndex=9; markerEnd.count=3; 9-3=6; 6..<9
 	let suffixRange = data.endIndex-markerEnd.count..<data.endIndex
 	return data[suffixRange].elementsEqual(markerEnd)
 }
